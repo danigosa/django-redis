@@ -10,6 +10,8 @@ import time
 import datetime
 from datetime import timedelta
 
+from django_redis.client.sentinel import SentinelClient
+
 try:
     from unittest.mock import patch
 except ImportError:
@@ -544,6 +546,9 @@ class DjangoRedisCacheTests(TestCase):
         self.assertNotEqual(next(result), None)
 
     def test_master_slave_switching(self):
+        if isinstance(self.cache.client,
+                      SentinelClient):
+            self.skipTest("SentinelClient does not use default master-slave setup")
         try:
             cache = caches["sample"]
             client = cache.client
@@ -552,6 +557,23 @@ class DjangoRedisCacheTests(TestCase):
 
             self.assertEqual(client.get_client(write=True), "Foo")
             self.assertEqual(client.get_client(write=False), "Bar")
+        except NotImplementedError:
+            pass
+
+    def test_sentinel_switching(self):
+        if not isinstance(self.cache.client,
+                      SentinelClient):
+            self.skipTest("Not Sentinel clients use default master-slave setup")
+        try:
+            cache = caches["sample"]
+            client = cache.client
+            master = client.get_client(write=True)
+            slave = client.get_client(write=False)
+
+            master.set("Foo", "Bar")
+            self.assertEqual(slave.get("Foo"), "Bar")
+            self.assertEqual(master.info()['role'], "master")
+            self.assertEqual(slave.info()['role'], "slave")
         except NotImplementedError:
             pass
 
